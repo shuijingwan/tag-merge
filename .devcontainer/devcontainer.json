@@ -1,0 +1,27 @@
+{
+  "name": "Tag Merge Dev Container",
+
+  "dockerComposeFile": ["../docker-compose.yml"],
+  "service": "go",
+  "workspaceFolder": "/code",
+
+  "shutdownAction": "stopCompose",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.Go",
+        "eamodio.gitlens",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "sh",
+        "go.toolsManagement.checkForUpdates": "local",
+        "go.useLanguageServer": true,
+        "go.gopath": "/go"
+      }
+    }
+  },
+
+  "remoteUser": "root"
+}

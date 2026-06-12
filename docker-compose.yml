@@ -1,0 +1,18 @@
+services:
+  go:
+    build: .
+    container_name: tag-merge
+    working_dir: /code
+    volumes:
+      - ./:/code
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/go/pkg/mod-tag-merge:/go/pkg/mod
+    tty: true
+    stdin_open: true
+    environment:
+    - GOPROXY=https://goproxy.io,direct
+    - GOSUMDB=sum.golang.google.cn
+    - CGO_ENABLED=0
+    # 使用 ${} 语法从 .env 文件中读取，不要在这里写明文密钥
+    - BAIDU_APP_ID=${BAIDU_APP_ID}
+    - BAIDU_SECRET_KEY=${BAIDU_SECRET_KEY}
