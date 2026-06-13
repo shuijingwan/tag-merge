@@ -193,7 +193,13 @@ func processFixEnTagsLog(logFile string, existingRules map[string]bool) ([]strin
 		// 英文标签修复只处理 English 语言
 		prefix := "/en/tag/"
 
+		// URL 解码 oldSlug，确保显示中文而非编码
 		oldSlug := record.OldSlug
+		decodedOldSlug, err := url.PathUnescape(oldSlug)
+		if err == nil {
+			oldSlug = decodedOldSlug
+		}
+
 		newSlug := record.NewSlug
 
 		if oldSlug == "" || newSlug == "" {
