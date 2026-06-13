@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// MergeLogRecord 定义 JSON 日志记录结构
+// MergeLogRecord 定义合并日志记录结构
 type MergeLogRecord struct {
 	SourceLang  string `json:"source_lang"`
 	SourceID    int    `json:"source_id"`
@@ -21,40 +21,86 @@ type MergeLogRecord struct {
 	Timestamp   string `json:"timestamp"`
 }
 
+// FixEnTagsLogRecord 定义英文标签修复日志记录结构
+type FixEnTagsLogRecord struct {
+	TermID        int    `json:"term_id"`
+	OriginalName  string `json:"original_name"`
+	NewName       string `json:"new_name"`
+	OldSlug       string `json:"old_slug"`
+	NewSlug       string `json:"new_slug"`
+	Lang          string `json:"lang"`
+	Status        string `json:"status"`
+	Timestamp     string `json:"timestamp"`
+}
+
 func main() {
 	// 1. 读取全量 Slug 字典
 	slugMap := make(map[string]string)
 	loadAllSlugs("../../data/all_terms_slug.csv", slugMap)
 
-	// 2. 读取 JSON 日志文件
-	logFile := "../../output/merge_log.json"
-	logData, err := os.ReadFile(logFile)
-	if err != nil {
-		fmt.Printf("❌ 读取日志文件失败: %v\n", err)
-		return
-	}
-
-	// 解析 JSON 日志
-	var mergeLog []MergeLogRecord
-	if err := json.Unmarshal(logData, &mergeLog); err != nil {
-		fmt.Printf("❌ 解析 JSON 日志失败: %v\n", err)
-		return
-	}
-
-	fmt.Printf("📝 共读取 %d 条合并记录\n", len(mergeLog))
-
-	// 3. 生成 Nginx 规则
+	// 2. 生成 Nginx 规则
 	var nginxConf strings.Builder
 	nginxConf.WriteString("map $uri $new_tag_uri {\n")
 	nginxConf.WriteString("    default \"\";\n")
 
+	// 3. 处理 merge_log.json（标签合并日志）
+	processMergeLog("../../output/merge_log.json", slugMap, &nginxConf)
+
+	// 4. 处理 fix_en_tags_log.json（英文标签修复日志）
+	processFixEnTagsLog("../../output/fix_en_tags_log.json", &nginxConf)
+
+	nginxConf.WriteString("}\n\n")
+
+	// 调整位置与缩进：将 include 注释放在 server 块前面，与 server 同级顶格对齐
+	nginxConf.WriteString("# 引入生成的 map 规则\n")
+	nginxConf.WriteString("# include /path/to/nginx_redirect.conf;\n\n")
+	nginxConf.WriteString("server {\n")
+	nginxConf.WriteString("    # ... 你的其他配置\n\n")
+	nginxConf.WriteString("    if ($new_tag_uri != \"\") {\n")
+	nginxConf.WriteString("        return 301 $new_tag_uri;\n")
+	nginxConf.WriteString("    }\n")
+	nginxConf.WriteString("}\n")
+
+	// 5. 写入文件
+	outputDir := "../../output"
+	outputFile := outputDir + "/nginx_redirect.conf"
+
+	// 如果目录不存在则自动创建
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		fmt.Printf("❌ 创建输出目录失败: %v\n", err)
+		return
+	}
+
+	err := os.WriteFile(outputFile, []byte(nginxConf.String()), 0644)
+	if err != nil {
+		fmt.Printf("❌ 写入 Nginx 规则文件失败: %v\n", err)
+		return
+	}
+
+	fmt.Println("✅ Nginx 规则已成功生成至 ../../output/nginx_redirect.conf")
+}
+
+// processMergeLog 处理标签合并日志
+func processMergeLog(logFile string, slugMap map[string]string, nginxConf *strings.Builder) {
+	logData, err := os.ReadFile(logFile)
+	if err != nil {
+		fmt.Printf("⚠️ 未找到合并日志文件 %s: %v\n", logFile, err)
+		return
+	}
+
+	var mergeLog []MergeLogRecord
+	if err := json.Unmarshal(logData, &mergeLog); err != nil {
+		fmt.Printf("❌ 解析合并日志 JSON 失败: %v\n", err)
+		return
+	}
+
+	fmt.Printf("📝 从 %s 读取 %d 条合并记录\n", logFile, len(mergeLog))
+
 	for _, record := range mergeLog {
-		// 只处理成功的记录
 		if record.Status != "success" {
 			continue
 		}
 
-		// 源和目标语言必须一致
 		if record.SourceLang != record.TargetLang {
 			fmt.Printf("⚠️ 警告：语言不一致，跳过。源: %s, 目标: %s\n", record.SourceLang, record.TargetLang)
 			continue
@@ -73,45 +119,54 @@ func main() {
 			continue
 		}
 
-		// 如果源和目标 Slug 一样，说明不需要跳转
 		if srcSlug == dstSlug {
 			continue
 		}
 
-		// 生成规则 (将 /$ 改为 /?$，匹配尾部有无斜杠的情况)
 		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";\n", prefix, srcSlug, prefix, dstSlug)
 		nginxConf.WriteString(rule)
 	}
+}
 
-	nginxConf.WriteString("}\n\n")
-
-	// 调整位置与缩进：将 include 注释放在 server 块前面，与 server 同级顶格对齐
-	nginxConf.WriteString("# 引入生成的 map 规则\n")
-	nginxConf.WriteString("# include /path/to/nginx_redirect.conf;\n\n")
-	nginxConf.WriteString("server {\n")
-	nginxConf.WriteString("    # ... 你的其他配置\n\n")
-	nginxConf.WriteString("    if ($new_tag_uri != \"\") {\n")
-	nginxConf.WriteString("        return 301 $new_tag_uri;\n")
-	nginxConf.WriteString("    }\n")
-	nginxConf.WriteString("}\n")
-
-	// 4. 写入文件
-	outputDir := "../../output"
-	outputFile := outputDir + "/nginx_redirect.conf"
-
-	// 如果目录不存在则自动创建
-	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
-		fmt.Printf("❌ 创建输出目录失败: %v\n", err)
-		return
-	}
-
-	err = os.WriteFile(outputFile, []byte(nginxConf.String()), 0644)
+// processFixEnTagsLog 处理英文标签修复日志
+func processFixEnTagsLog(logFile string, nginxConf *strings.Builder) {
+	logData, err := os.ReadFile(logFile)
 	if err != nil {
-		fmt.Printf("❌ 写入 Nginx 规则文件失败: %v\n", err)
+		fmt.Printf("⚠️ 未找到英文标签修复日志文件 %s: %v\n", logFile, err)
 		return
 	}
 
-	fmt.Println("✅ Nginx 规则已成功生成至 ../../output/nginx_redirect.conf")
+	var fixLog []FixEnTagsLogRecord
+	if err := json.Unmarshal(logData, &fixLog); err != nil {
+		fmt.Printf("❌ 解析英文标签修复日志 JSON 失败: %v\n", err)
+		return
+	}
+
+	fmt.Printf("📝 从 %s 读取 %d 条英文标签修复记录\n", logFile, len(fixLog))
+
+	for _, record := range fixLog {
+		if record.Status != "success" {
+			continue
+		}
+
+		// 英文标签修复只处理 English 语言
+		prefix := "/en/tag/"
+
+		oldSlug := record.OldSlug
+		newSlug := record.NewSlug
+
+		if oldSlug == "" || newSlug == "" {
+			fmt.Printf("⚠️ 警告：Slug 为空，跳过。TermID: %d\n", record.TermID)
+			continue
+		}
+
+		if oldSlug == newSlug {
+			continue
+		}
+
+		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";\n", prefix, oldSlug, prefix, newSlug)
+		nginxConf.WriteString(rule)
+	}
 }
 
 // loadAllSlugs 读取全量字典

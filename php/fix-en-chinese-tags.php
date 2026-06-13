@@ -15,6 +15,9 @@ if ($dry_run) {
 // 配置
 $target_lang = 'en'; // 要处理的目标语言
 
+// 📝 日志记录数组（用于生成 JSON 文件）
+$fix_log = [];
+
 // 加载翻译缓存
 $cache_file = __DIR__ . '/output/translation_cache.json';
 if (!file_exists($cache_file)) {
@@ -72,6 +75,7 @@ $failed = 0;
 foreach ($chinese_terms as $term) {
     $original_name = $term->name;
     $term_id = $term->term_id;
+    $old_slug = $term->slug;
     
     // 查找对应的英文翻译
     $english_name = isset($translations[$original_name]) ? $translations[$original_name] : null;
@@ -86,7 +90,7 @@ foreach ($chinese_terms as $term) {
     $new_slug = strtolower(str_replace(' ', '-', preg_replace('/[^a-zA-Z0-9\s-]/', '', $english_name)));
     
     echo "🔄 准备处理: [{$target_lang}] {$original_name} (ID: {$term_id}) -> {$english_name}\n";
-    echo "   └─ Slug: {$term->slug} -> {$new_slug}\n";
+    echo "   └─ Slug: {$old_slug} -> {$new_slug}\n";
     
     if ($dry_run) {
         echo "   [模拟] 跳过实际修改\n";
@@ -102,9 +106,32 @@ foreach ($chinese_terms as $term) {
     
     if (is_wp_error($result)) {
         echo "❌ 修改失败: " . $result->get_error_message() . "\n";
+        // 📝 记录失败
+        $fix_log[] = [
+            'term_id' => $term_id,
+            'original_name' => $original_name,
+            'new_name' => $english_name,
+            'old_slug' => $old_slug,
+            'new_slug' => $new_slug,
+            'lang' => $target_lang,
+            'status' => 'failed',
+            'error' => $result->get_error_message(),
+            'timestamp' => date('Y-m-d H:i:s')
+        ];
         $failed++;
     } else {
         echo "✅ 修改成功！\n";
+        // 📝 记录成功
+        $fix_log[] = [
+            'term_id' => $term_id,
+            'original_name' => $original_name,
+            'new_name' => $english_name,
+            'old_slug' => $old_slug,
+            'new_slug' => $new_slug,
+            'lang' => $target_lang,
+            'status' => 'success',
+            'timestamp' => date('Y-m-d H:i:s')
+        ];
         $processed++;
     }
 }
@@ -115,7 +142,23 @@ echo "   已处理: {$processed} 个\n";
 echo "   跳过(无翻译): {$skipped} 个\n";
 echo "   失败: {$failed} 个\n";
 
+// 📝 写入 JSON 日志文件（仅非模拟模式）
+if (!$dry_run && !empty($fix_log)) {
+    $log_file = __DIR__ . '/output/fix_en_tags_log.json';
+    $log_dir = dirname($log_file);
+    if (!is_dir($log_dir)) {
+        mkdir($log_dir, 0755, true);
+    }
+    $json_content = json_encode($fix_log, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    if (file_put_contents($log_file, $json_content)) {
+        echo "\n📝 日志已保存至: {$log_file}\n";
+        echo "💡 此文件供生成 Nginx 301 规则使用\n";
+    } else {
+        echo "\n❌ 日志文件写入失败\n";
+    }
+}
+
 if ($dry_run) {
-    echo "\n💡 提示：去掉 --dry-run 参数后才会真正修改数据库。\n";
+    echo "\n💡 提示：去掉 --dry-run 参数后才会真正修改数据库并生成日志文件。\n";
 }
 ?>

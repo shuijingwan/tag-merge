@@ -52,6 +52,7 @@ tag-merge/
 │   ├── tag_mapping_result.csv  # 翻译碰撞结果
 │   ├── translation_cache.json  # 翻译缓存（自动生成，复用翻译结果）
 │   ├── merge_log.json          # [Step 5 依赖] 线上合并日志（JSON 格式，自动生成）
+│   ├── fix_en_tags_log.json    # [Step 5 依赖] 英文标签修复日志（JSON 格式，自动生成）
 │   └── nginx_redirect.conf     # 生成的 Nginx 跳转规则
 ├── php/                    # 线上执行脚本（需上传至线上 Web 服务器运行）
 │   ├── polylang-batch-zh-to-en-tags.php  # Step 1: 批量为中文标签添加英文翻译
@@ -331,11 +332,34 @@ php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php
    已处理: 3 个
    跳过(无翻译): 0 个
    失败: 0 个
+
+📝 日志已保存至: ./output/fix_en_tags_log.json
+💡 此文件供生成 Nginx 301 规则使用
+```
+
+**日志文件格式示例（`fix_en_tags_log.json`）：**
+
+```json
+[
+    {
+        "term_id": 4567,
+        "original_name": "支付宝",
+        "new_name": "Alipay",
+        "old_slug": "zhifubao",
+        "new_slug": "alipay",
+        "lang": "en",
+        "status": "success",
+        "timestamp": "2026-06-13 10:30:00"
+    }
+]
 ```
 
 ### Step 5: 本地生成 Nginx 规则 (🖥️ 本地环境)
 
-在本地 Docker 容器内运行 Go 脚本。此脚本会结合全量字典 `data/all_terms_slug.csv` 和上一步自动生成的合并日志 `output/merge_log.json`，通过 ID 交叉匹配自动推导出 Slug 的变化，并生成 301 跳转规则。
+在本地 Docker 容器内运行 Go 脚本。此脚本会结合全量字典 `data/all_terms_slug.csv` 和以下两个日志文件，自动生成 301 跳转规则：
+
+- `output/merge_log.json` - 标签合并日志
+- `output/fix_en_tags_log.json` - 英文标签修复日志
 
 ```bash
 # 如果在容器内，需进入 nginx-redirect 目录
