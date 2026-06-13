@@ -67,14 +67,14 @@ func main() {
 		return
 	}
 
-	// 6. 追加写入新规则
+	// 6. 插入规则到 map 块内
 	outputFile := "../../output/nginx_redirect.conf"
-	if err := appendRules(outputFile, newRules); err != nil {
-		fmt.Printf("❌ 追加规则失败: %v\n", err)
+	if err := insertRulesToMapBlock(outputFile, newRules); err != nil {
+		fmt.Printf("❌ 插入规则失败: %v\n", err)
 		return
 	}
 
-	fmt.Printf("✅ 成功追加 %d 条新规则至 %s\n", len(newRules), outputFile)
+	fmt.Printf("✅ 成功插入 %d 条新规则至 %s 的 map 块内\n", len(newRules), outputFile)
 	fmt.Println("💡 提示：可以安全地将此文件内容复制到线上 Nginx 配置中，不会重复")
 }
 
@@ -154,7 +154,7 @@ func processMergeLog(logFile string, slugMap map[string]string, existingRules ma
 		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";", prefix, srcSlug, prefix, dstSlug)
 
 		// 检查是否已存在
-		if existingRules[srcPattern] != false {
+		if existingRules[srcPattern] {
 			skipCount++
 			continue
 		}
@@ -209,7 +209,7 @@ func processFixEnTagsLog(logFile string, existingRules map[string]bool) ([]strin
 		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";", prefix, oldSlug, prefix, newSlug)
 
 		// 检查是否已存在
-		if existingRules[srcPattern] != false {
+		if existingRules[srcPattern] {
 			skipCount++
 			continue
 		}
@@ -221,23 +221,68 @@ func processFixEnTagsLog(logFile string, existingRules map[string]bool) ([]strin
 	return newRules, skipCount
 }
 
-// appendRules 追加规则到 Nginx 配置文件
-func appendRules(filePath string, rules []string) error {
-	// 打开文件（追加模式），如果不存在则创建
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// insertRulesToMapBlock 将新规则插入到 map 块内
+func insertRulesToMapBlock(filePath string, rules []string) error {
+	// 读取现有文件内容
+	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return err
+		// 文件不存在，创建新文件
+		return createNewConfigFile(filePath, rules)
 	}
-	defer file.Close()
 
-	// 写入新规则
-	for _, rule := range rules {
-		if _, err := file.WriteString(rule + "\n"); err != nil {
-			return err
+	lines := strings.Split(string(content), "\n")
+
+	// 找到 map 块的结束位置（第一个单独的 "}"）
+	mapBlockEndIndex := -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "}" {
+			mapBlockEndIndex = i
+			break
 		}
 	}
 
-	return nil
+	if mapBlockEndIndex == -1 {
+		// 没有找到 map 块，创建新文件
+		return createNewConfigFile(filePath, rules)
+	}
+
+	// 在 map 块结束位置之前插入新规则
+	newLines := make([]string, 0, len(lines)+len(rules))
+	newLines = append(newLines, lines[:mapBlockEndIndex]...)
+	for _, rule := range rules {
+		newLines = append(newLines, rule)
+	}
+	newLines = append(newLines, lines[mapBlockEndIndex:]...)
+
+	// 写入文件
+	newContent := strings.Join(newLines, "\n")
+	return os.WriteFile(filePath, []byte(newContent), 0644)
+}
+
+// createNewConfigFile 创建新的 Nginx 配置文件
+func createNewConfigFile(filePath string, rules []string) error {
+	var config strings.Builder
+
+	// 写入 map 块
+	config.WriteString("map $uri $new_tag_uri {\n")
+	config.WriteString("    default \"\";\n")
+	for _, rule := range rules {
+		config.WriteString(rule + "\n")
+	}
+	config.WriteString("}\n\n")
+
+	// 写入 server 块示例
+	config.WriteString("# 引入生成的 map 规则\n")
+	config.WriteString("# include /path/to/nginx_redirect.conf;\n\n")
+	config.WriteString("server {\n")
+	config.WriteString("    # ... 你的其他配置\n\n")
+	config.WriteString("    if ($new_tag_uri != \"\") {\n")
+	config.WriteString("        return 301 $new_tag_uri;\n")
+	config.WriteString("    }\n")
+	config.WriteString("}\n")
+
+	return os.WriteFile(filePath, []byte(config.String()), 0644)
 }
 
 // loadAllSlugs 读取全量字典
