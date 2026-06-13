@@ -110,7 +110,7 @@ if (($handle = fopen($csv_file, 'r')) !== FALSE) {
         $target_zh_name = trim($data[3]);
         $status = trim($data[4]);
 
-        if ($status !== 'API匹配成功' || empty($target_zh_id)) continue;
+        if (($status !== 'API匹配成功' && $status !== '缓存匹配成功') || empty($target_zh_id)) continue;
         if (!$is_all && !in_array($source_zh_id, $test_ids)) continue;
 
         echo "🔄 ========================================\n";

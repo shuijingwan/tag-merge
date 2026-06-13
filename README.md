@@ -286,8 +286,9 @@ php merge-tags.php --all
 在本地 Docker 容器内运行 Go 脚本。此脚本会结合全量字典 `data/all_terms_slug.csv` 和上一步自动生成的合并日志 `output/merge_log.json`，通过 ID 交叉匹配自动推导出 Slug 的变化，并生成 301 跳转规则。
 
 ```bash
-# 如果在容器内
-go run cmd/nginx-redirect/main.go
+# 如果在容器内，需进入 nginx-redirect 目录
+cd cmd/nginx-redirect/
+go run main.go
 ```
 
 **生成的 Nginx 规则示例 (`output/nginx_redirect.conf`)：**
