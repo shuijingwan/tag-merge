@@ -50,7 +50,7 @@ tag-merge/
 │   └── all_terms_slug.csv  # [Step 4 依赖] 全站标签 ID-Slug 字典
 ├── output/                 # 存放程序运行后生成的结果文件
 │   ├── tag_mapping_result.csv  # 翻译碰撞结果
-│   ├── merge_log.txt           # [Step 4 依赖] 线上合并日志
+│   ├── merge_log.json          # [Step 4 依赖] 线上合并日志（JSON 格式，自动生成）
 │   └── nginx_redirect.conf     # 生成的 Nginx 跳转规则
 ├── php/                    # 线上执行脚本（需上传至线上 Web 服务器运行）
 │   ├── polylang-batch-zh-to-en-tags.php  # Step 1
@@ -225,9 +225,36 @@ php merge-tags.php 148
 php merge-tags.php --all
 ```
 
-⚠️ **重要**：执行全量实战 `--all` 后，请将终端输出的完整日志保存至本地 `output/merge_log.txt`，Step 4 必须依赖此日志推导 URL 变化！
+⚠️ **重要**：执行全量实战 `--all` 后，脚本会自动生成 `output/merge_log.json` 文件，供 Step 4 使用。无需手动复制日志！
 
-日志格式示例：
+日志文件格式示例（`merge_log.json`）：
+
+```json
+[
+    {
+        "source_lang": "中",
+        "source_id": 27,
+        "source_name": "权限",
+        "target_lang": "中",
+        "target_id": 1519,
+        "target_name": "permission",
+        "status": "success",
+        "timestamp": "2026-06-13 10:30:00"
+    },
+    {
+        "source_lang": "英",
+        "source_id": 32800,
+        "source_name": "权限",
+        "target_lang": "英",
+        "target_id": 25672,
+        "target_name": "permission",
+        "status": "success",
+        "timestamp": "2026-06-13 10:30:01"
+    }
+]
+```
+
+终端输出示例（供肉眼观察）：
 
 ```text
 🔄 ========================================
@@ -242,7 +269,7 @@ php merge-tags.php --all
 
 ### Step 4: 本地生成 Nginx 规则 (🖥️ 本地环境)
 
-在本地 Docker 容器内运行 Go 脚本。此脚本会结合全量字典 `data/all_terms_slug.csv` 和上一步保存的合并日志 `output/merge_log.txt`，通过 ID 交叉匹配自动推导出 Slug 的变化，并生成 301 跳转规则。
+在本地 Docker 容器内运行 Go 脚本。此脚本会结合全量字典 `data/all_terms_slug.csv` 和上一步自动生成的合并日志 `output/merge_log.json`，通过 ID 交叉匹配自动推导出 Slug 的变化，并生成 301 跳转规则。
 
 ```bash
 # 如果在容器内
