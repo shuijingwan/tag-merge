@@ -13,12 +13,12 @@
 
 本工具集包含 4 个核心步骤，跨越本地和线上环境：
 
-| 步骤         | 脚本                                     | 运行环境     | 说明                                                            |
-| :--------- | :------------------------------------- | :------- | :------------------------------------------------------------ |
+| 步骤       | 脚本                                   | 运行环境      | 说明                                                                                                |
+| :--------- | :------------------------------------- | :------------ | :-------------------------------------------------------------------------------------------------- |
 | **Step 1** | `php/polylang-batch-zh-to-en-tags.php` | ☁️ 线上服务器 | 依赖 WP/Polylang 函数，将 中文（中国）语言下的标签批量同步至 English 语言下（生成未翻译的占位标签） |
-| **Step 2** | `main.go`                              | 🖥️ 本地   | 导出线上标签为 CSV，调用百度 API 翻译并智能碰撞，生成映射关系 CSV                       |
-| **Step 3** | `php/merge-tags.php`                   | ☁️ 线上服务器 | 依赖 WP/Polylang 函数，读取映射 CSV，将中文标签合并至正确的英文标签并建立关联               |
-| **Step 4** | `cmd/nginx-redirect/main.go`           | 🖥️ 本地   | 读取合并日志与全量 Slug 字典，生成 Nginx 301 跳转配置文件，恢复旧标签的 SEO 权重           |
+| **Step 2** | `main.go`                              | 🖥️ 本地       | 导出线上标签为 CSV，调用百度 API 翻译并智能碰撞，生成映射关系 CSV                                   |
+| **Step 3** | `php/merge-tags.php`                   | ☁️ 线上服务器 | 依赖 WP/Polylang 函数，读取映射 CSV，将中文标签合并至正确的英文标签并建立关联                       |
+| **Step 4** | `cmd/nginx-redirect/main.go`           | 🖥️ 本地       | 读取合并日志与全量 Slug 字典，生成 Nginx 301 跳转配置文件，恢复旧标签的 SEO 权重                    |
 
 **为什么跨环境？**
 
@@ -45,8 +45,8 @@ tag-merge/
 │   └── nginx-redirect/     # Nginx 301 跳转规则生成器
 │       └── main.go
 ├── data/                   # 存放从数据库导出的原始 CSV 文件
-│   ├── zh_tags_containing_chinese.csv         # [Step 2 依赖] 中文（中国）语言下包含中文的标签
-│   ├── zh_tags_without_chinese.csv         # [Step 2 依赖] 中文（中国）语言下不包含中文的标签
+│   ├── zh_tags_containing_chinese.csv  # [Step 2 依赖] 中文（中国）语言下包含中文的标签
+│   ├── zh_tags_without_chinese.csv     # [Step 2 依赖] 中文（中国）语言下不包含中文的标签
 │   └── all_terms_slug.csv  # [Step 4 依赖] 全站标签 ID-Slug 字典
 ├── output/                 # 存放程序运行后生成的结果文件
 │   ├── tag_mapping_result.csv  # 翻译碰撞结果
@@ -72,80 +72,83 @@ tag-merge/
 1. **基础环境**：已安装 Docker 和 Docker Compose (V2)。
 2. **API 凭证**：拥有百度翻译开放平台账号，并开通了**通用文本翻译** API，获取了 `APP ID` 和 `密钥`。
 3. **导出数据 CSV**：从线上 WordPress 数据库执行以下 SQL，将结果导出为 CSV 文件放入本地 `data/` 目录。
-   - **`data/zh_tags_containing_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下包含中文的标签)
-     ```sql
-     SELECT
-       t.term_id,
-       t.name,
-       t.slug
-     FROM
-       wp_terms t
-       INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id
-       INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
-       INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
-       INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
-     WHERE
-       tt.taxonomy = 'post_tag'
-       AND t.slug REGEXP '[^a-zA-Z0-9_-]'
-       AND tt_lang.taxonomy = 'term_language'
-       AND t_lang.slug = 'pll_zh'
-     LIMIT
-       0, 3000
-     ```
-   - **`data/zh_tags_without_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下不包含中文的标签)
-     *(注意：此 SQL 查询的是中文（中国）语言下，但名称本身不包含中文字符的标签，如原本就是英文的标签)*
-     ```sql
-     SELECT
-       t.term_id,
-       t.name,
-       t.slug
-     FROM
-       wp_terms t
-       INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id
-       INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
-       INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
-       INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
-     WHERE
-       tt.taxonomy = 'post_tag'
-       AND t.slug REGEXP '^[a-zA-Z0-9_-]+$'
-       AND tt_lang.taxonomy = 'term_language'
-       AND t_lang.slug = 'pll_zh';
-     ```
-   - **`data/all_terms_slug.csv`** (供 Step 4 生成 Nginx 规则使用：全站标签 ID-Slug 字典)
-     *(此表不过滤语言，包含全站所有标签的 ID 与 Slug 映射)*
-     ```sql
-     SELECT
-       term_id,
-       slug
-     FROM
-       wp_terms
-     WHERE
-       term_id IN (
-         SELECT
-           term_id
-         FROM
-           wp_term_taxonomy
-         WHERE
-           taxonomy = 'post_tag'
-       );
-     ```
-   **CSV 格式示例：**
+    - **`data/zh_tags_containing_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下包含中文的标签)
+        ```sql
+        SELECT
+          t.term_id,
+          t.name,
+          t.slug
+        FROM
+          wp_terms t
+          INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id
+          INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
+          INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
+          INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
+        WHERE
+          tt.taxonomy = 'post_tag'
+          AND t.slug REGEXP '[^a-zA-Z0-9_-]'
+          AND tt_lang.taxonomy = 'term_language'
+          AND t_lang.slug = 'pll_zh'
+        ```
+    - **`data/zh_tags_without_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下不包含中文的标签)
+      _(注意：此 SQL 查询的是中文（中国）语言下，但名称本身不包含中文字符的标签，如原本就是英文的标签)_
 
-   `zh_tags_containing_chinese.csv` & `zh_tags_without_chinese.csv`
-   ```csv
-   term_id,name,slug
-   "7","图片水平垂直居中","%e5%9b%be%e7%89%87%e6%b0%b4%e5%b9%b3%e5%9e%82%e7%9b%b4%e5%b1%85%e4%b8%ad"
-   "27","权限","%e6%9d%83%e9%99%90"
-   "1519","permission","permission"
-   ```
-   `all_terms_slug.csv`
-   ```csv
-   term_id,slug
-   "27","%e6%9d%83%e9%99%90"
-   "1519","permission"
-   "32800","%e6%9d%83%e9%99%90"
-   "25672","permission"
-   ```
+    ````sql
+    SELECT
+      t.term_id,
+      t.name,
+      t.slug
+    FROM
+      wp_terms t
+      INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id
+      INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
+      INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
+      INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
+    WHERE
+      tt.taxonomy = 'post_tag'
+      AND t.slug REGEXP '^[a-zA-Z0-9_-]+$'
+      AND tt_lang.taxonomy = 'term_language'
+      AND t_lang.slug = 'pll_zh';
+    ```
+    - **`data/all_terms_slug.csv`** (供 Step 4 生成 Nginx 规则使用：全站标签 ID-Slug 字典)
+      *(此表不过滤语言，包含全站所有标签的 ID 与 Slug 映射)*
+    ```sql
+    SELECT
+      term_id,
+      slug
+    FROM
+      wp_terms
+    WHERE
+      term_id IN (
+        SELECT
+          term_id
+        FROM
+          wp_term_taxonomy
+        WHERE
+          taxonomy = 'post_tag'
+      );
+    ```
+    **CSV 格式示例：**
+    ````
+
+`zh_tags_containing_chinese.csv` & `zh_tags_without_chinese.csv`
+
+`````csv
+  term_id,name,slug
+  "7","图片水平垂直居中","%e5%9b%be%e7%89%87%e6%b0%b4%e5%b9%b3%e5%9e%82%e7%9b%b4%e5%b1%85%e4%b8%ad"
+  "27","权限","%e6%9d%83%e9%99%90"
+  "1519","permission","permission"
+  ````
+
+  `all_terms_slug.csv`
+
+  ```csv
+  term_id,slug
+  "27","%e6%9d%83%e9%99%90"
+  "1519","permission"
+  "32800","%e6%9d%83%e9%99%90"
+  "25672","permission"
+  ```
 
 ## 🚀 快速开始（核心工作流）
 
@@ -155,9 +158,9 @@ tag-merge/
 
 ```bash
 php polylang-batch-zh-to-en-tags.php
-```
+`````
 
-*此步骤会将所有中文（中国）语言下的标签复制到 English 语言下作为占位，为后续标签合并提供基础数据。*
+_此步骤会将所有中文（中国）语言下的标签复制到 English 语言下作为占位，为后续标签合并提供基础数据。_
 
 ### Step 2: 本地翻译碰撞 (🖥️ 本地环境)
 
@@ -272,4 +275,3 @@ server {
 ## 📄 License
 
 MIT
-
