@@ -75,7 +75,7 @@ $failed = 0;
 foreach ($chinese_terms as $term) {
     $original_name = $term->name;
     $term_id = $term->term_id;
-    $old_slug = $term->slug;
+    $old_slug = urldecode($term->slug); // URL 解码，确保显示中文而非编码
     
     // 查找对应的英文翻译
     $english_name = isset($translations[$original_name]) ? $translations[$original_name] : null;
