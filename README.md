@@ -361,6 +361,15 @@ php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php
 - `output/merge_log.json` - 标签合并日志
 - `output/fix_en_tags_log.json` - 英文标签修复日志
 
+**⚠️ 重要：追加模式与自动去重**
+
+脚本采用追加模式，会自动检测并跳过已存在的规则，避免重复：
+
+- ✅ 每次运行只会追加新规则
+- ✅ 自动识别并跳过已存在的规则
+- ✅ 可以多次安全运行，不会重复
+- ✅ 无需手动去重
+
 ```bash
 # 如果在容器内，需进入 nginx-redirect 目录
 cd cmd/nginx-redirect/

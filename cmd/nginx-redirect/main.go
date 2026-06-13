@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -38,63 +40,88 @@ func main() {
 	slugMap := make(map[string]string)
 	loadAllSlugs("../../data/all_terms_slug.csv", slugMap)
 
-	// 2. 生成 Nginx 规则
-	var nginxConf strings.Builder
-	nginxConf.WriteString("map $uri $new_tag_uri {\n")
-	nginxConf.WriteString("    default \"\";\n")
+	// 2. 读取现有的 Nginx 配置文件（如果存在），用于去重
+	existingRules := loadExistingRules("../../output/nginx_redirect.conf")
+	fmt.Printf("📋 已存在 %d 条 Nginx 规则\n", len(existingRules))
 
-	// 3. 处理 merge_log.json（标签合并日志）
-	processMergeLog("../../output/merge_log.json", slugMap, &nginxConf)
+	// 3. 生成 Nginx 规则（使用 Set 去重）
+	ruleSet := make(map[string]bool)
+	for rule := range existingRules {
+		ruleSet[rule] = true
+	}
 
-	// 4. 处理 fix_en_tags_log.json（英文标签修复日志）
-	processFixEnTagsLog("../../output/fix_en_tags_log.json", &nginxConf)
+	var newRules []string
+	var skipCount int
 
-	nginxConf.WriteString("}\n\n")
+	// 4. 处理 merge_log.json（标签合并日志）
+	newRules, skipCount = processMergeLog("../../output/merge_log.json", slugMap, ruleSet)
+	fmt.Printf("📝 从 merge_log.json 生成 %d 条新规则，跳过 %d 条重复规则\n", len(newRules), skipCount)
 
-	// 调整位置与缩进：将 include 注释放在 server 块前面，与 server 同级顶格对齐
-	nginxConf.WriteString("# 引入生成的 map 规则\n")
-	nginxConf.WriteString("# include /path/to/nginx_redirect.conf;\n\n")
-	nginxConf.WriteString("server {\n")
-	nginxConf.WriteString("    # ... 你的其他配置\n\n")
-	nginxConf.WriteString("    if ($new_tag_uri != \"\") {\n")
-	nginxConf.WriteString("        return 301 $new_tag_uri;\n")
-	nginxConf.WriteString("    }\n")
-	nginxConf.WriteString("}\n")
+	// 5. 处理 fix_en_tags_log.json（英文标签修复日志）
+	moreRules, moreSkipCount := processFixEnTagsLog("../../output/fix_en_tags_log.json", ruleSet)
+	fmt.Printf("📝 从 fix_en_tags_log.json 生成 %d 条新规则，跳过 %d 条重复规则\n", len(moreRules), moreSkipCount)
+	newRules = append(newRules, moreRules...)
 
-	// 5. 写入文件
-	outputDir := "../../output"
-	outputFile := outputDir + "/nginx_redirect.conf"
-
-	// 如果目录不存在则自动创建
-	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
-		fmt.Printf("❌ 创建输出目录失败: %v\n", err)
+	if len(newRules) == 0 {
+		fmt.Println("ℹ️ 没有新规则需要添加（所有规则都已存在）")
 		return
 	}
 
-	err := os.WriteFile(outputFile, []byte(nginxConf.String()), 0644)
-	if err != nil {
-		fmt.Printf("❌ 写入 Nginx 规则文件失败: %v\n", err)
+	// 6. 追加写入新规则
+	outputFile := "../../output/nginx_redirect.conf"
+	if err := appendRules(outputFile, newRules); err != nil {
+		fmt.Printf("❌ 追加规则失败: %v\n", err)
 		return
 	}
 
-	fmt.Println("✅ Nginx 规则已成功生成至 ../../output/nginx_redirect.conf")
+	fmt.Printf("✅ 成功追加 %d 条新规则至 %s\n", len(newRules), outputFile)
+	fmt.Println("💡 提示：可以安全地将此文件内容复制到线上 Nginx 配置中，不会重复")
 }
 
-// processMergeLog 处理标签合并日志
-func processMergeLog(logFile string, slugMap map[string]string, nginxConf *strings.Builder) {
+// loadExistingRules 读取现有配置文件，提取已有规则
+func loadExistingRules(filePath string) map[string]string {
+	existingRules := make(map[string]string)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return existingRules
+	}
+	defer file.Close()
+
+	// 匹配形如 "    ~^/tag/xxx/?$ "/tag/yyy/";" 的规则
+	ruleRegex := regexp.MustCompile(`^\s*~?\^?(/[^ ]+/?\$)\s+"([^"]+)"`)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		matches := ruleRegex.FindStringSubmatch(line)
+		if len(matches) >= 3 {
+			// 存储 key 为源 URL，value 为目标 URL
+			existingRules[matches[1]] = matches[2]
+		}
+	}
+
+	return existingRules
+}
+
+// processMergeLog 处理标签合并日志，返回新规则列表
+func processMergeLog(logFile string, slugMap map[string]string, existingRules map[string]bool) ([]string, int) {
 	logData, err := os.ReadFile(logFile)
 	if err != nil {
 		fmt.Printf("⚠️ 未找到合并日志文件 %s: %v\n", logFile, err)
-		return
+		return []string{}, 0
 	}
 
 	var mergeLog []MergeLogRecord
 	if err := json.Unmarshal(logData, &mergeLog); err != nil {
 		fmt.Printf("❌ 解析合并日志 JSON 失败: %v\n", err)
-		return
+		return []string{}, 0
 	}
 
 	fmt.Printf("📝 从 %s 读取 %d 条合并记录\n", logFile, len(mergeLog))
+
+	var newRules []string
+	skipCount := 0
 
 	for _, record := range mergeLog {
 		if record.Status != "success" {
@@ -123,26 +150,40 @@ func processMergeLog(logFile string, slugMap map[string]string, nginxConf *strin
 			continue
 		}
 
-		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";\n", prefix, srcSlug, prefix, dstSlug)
-		nginxConf.WriteString(rule)
+		srcPattern := fmt.Sprintf("^%s%s/?$", prefix, srcSlug)
+		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";", prefix, srcSlug, prefix, dstSlug)
+
+		// 检查是否已存在
+		if existingRules[srcPattern] != false {
+			skipCount++
+			continue
+		}
+
+		newRules = append(newRules, rule)
+		existingRules[srcPattern] = true // 标记为已存在
 	}
+
+	return newRules, skipCount
 }
 
-// processFixEnTagsLog 处理英文标签修复日志
-func processFixEnTagsLog(logFile string, nginxConf *strings.Builder) {
+// processFixEnTagsLog 处理英文标签修复日志，返回新规则列表
+func processFixEnTagsLog(logFile string, existingRules map[string]bool) ([]string, int) {
 	logData, err := os.ReadFile(logFile)
 	if err != nil {
 		fmt.Printf("⚠️ 未找到英文标签修复日志文件 %s: %v\n", logFile, err)
-		return
+		return []string{}, 0
 	}
 
 	var fixLog []FixEnTagsLogRecord
 	if err := json.Unmarshal(logData, &fixLog); err != nil {
 		fmt.Printf("❌ 解析英文标签修复日志 JSON 失败: %v\n", err)
-		return
+		return []string{}, 0
 	}
 
 	fmt.Printf("📝 从 %s 读取 %d 条英文标签修复记录\n", logFile, len(fixLog))
+
+	var newRules []string
+	skipCount := 0
 
 	for _, record := range fixLog {
 		if record.Status != "success" {
@@ -164,9 +205,39 @@ func processFixEnTagsLog(logFile string, nginxConf *strings.Builder) {
 			continue
 		}
 
-		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";\n", prefix, oldSlug, prefix, newSlug)
-		nginxConf.WriteString(rule)
+		srcPattern := fmt.Sprintf("^%s%s/?$", prefix, oldSlug)
+		rule := fmt.Sprintf("    ~^%s%s/?$ \"%s%s/\";", prefix, oldSlug, prefix, newSlug)
+
+		// 检查是否已存在
+		if existingRules[srcPattern] != false {
+			skipCount++
+			continue
+		}
+
+		newRules = append(newRules, rule)
+		existingRules[srcPattern] = true // 标记为已存在
 	}
+
+	return newRules, skipCount
+}
+
+// appendRules 追加规则到 Nginx 配置文件
+func appendRules(filePath string, rules []string) error {
+	// 打开文件（追加模式），如果不存在则创建
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// 写入新规则
+	for _, rule := range rules {
+		if _, err := file.WriteString(rule + "\n"); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // loadAllSlugs 读取全量字典
