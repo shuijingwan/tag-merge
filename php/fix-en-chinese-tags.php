@@ -8,33 +8,23 @@ global $wpdb, $polylang;
 
 // 解析命令行参数
 $dry_run = in_array('--dry-run', $argv);
-$cache_file = '';
-
-// 查找 -f 或 --file 参数
-for ($i = 1; $i < count($argv); $i++) {
-    if (($argv[$i] === '-f' || $argv[$i] === '--file') && isset($argv[$i + 1])) {
-        $cache_file = $argv[$i + 1];
-        break;
-    }
-}
-
 if ($dry_run) {
     echo "🏃‍♂️ 【模拟执行模式】：仅输出将要执行的操作，不会修改数据库！\n\n";
-}
-
-// 如果没有指定缓存文件路径，使用默认路径
-if (empty($cache_file)) {
-    $cache_file = __DIR__ . '/../output/translation_cache.json';
 }
 
 // 配置
 $target_lang = 'en'; // 要处理的目标语言
 
 // 加载翻译缓存
+$cache_file = __DIR__ . '/output/translation_cache.json';
 if (!file_exists($cache_file)) {
     die("❌ 翻译缓存文件不存在: {$cache_file}\n\n" .
-        "💡 提示：请确保 translation_cache.json 文件存在，或使用 -f 参数指定路径：\n" .
-        "   php fix-en-chinese-tags.php -f /path/to/translation_cache.json\n");
+        "💡 提示：请确保 output/translation_cache.json 文件与本脚本平级放置。\n" .
+        "   目录结构要求:\n" .
+        "   ├── php/\n" .
+        "   │   └── fix-en-chinese-tags.php\n" .
+        "   └── output/\n" .
+        "       └── translation_cache.json\n");
 }
 
 $cache_data = json_decode(file_get_contents($cache_file), true);

@@ -286,16 +286,24 @@ php merge-tags.php --all
 
 此步骤用于修复 English 语言下名称仍然是中文的标签（如 `/en/tag/支付宝` → `/en/tag/alipay`）。脚本会自动读取 `output/translation_cache.json` 中的翻译结果，批量修改这些标签。
 
+**📁 目录结构要求：**
+
+```
+├── php/
+│   └── fix-en-chinese-tags.php
+└── output/
+    └── translation_cache.json
+```
+
 ```bash
 # 在网站根目录执行
 cd /var/www/html
 
 # 先进行模拟执行，查看将要修改的内容
-# 如果缓存文件不在默认位置，使用 -f 参数指定路径
-php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php -f /path/to/translation_cache.json --dry-run
+php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php --dry-run
 
 # 确认无误后执行实际修改
-php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php -f /path/to/translation_cache.json
+php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php
 ```
 
 **执行示例：**
