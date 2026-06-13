@@ -45,8 +45,8 @@ tag-merge/
 │   └── nginx-redirect/     # Nginx 301 跳转规则生成器
 │       └── main.go
 ├── data/                   # 存放从数据库导出的原始 CSV 文件
-│   ├── zh_tags.csv         # [Step 2 依赖] 中文（中国）语言下包含中文的标签
-│   ├── en_tags.csv         # [Step 2 依赖] 中文（中国）语言下不包含中文的标签
+│   ├── zh_tags_containing_chinese.csv         # [Step 2 依赖] 中文（中国）语言下包含中文的标签
+│   ├── zh_tags_without_chinese.csv         # [Step 2 依赖] 中文（中国）语言下不包含中文的标签
 │   └── all_terms_slug.csv  # [Step 4 依赖] 全站标签 ID-Slug 字典
 ├── output/                 # 存放程序运行后生成的结果文件
 │   ├── tag_mapping_result.csv  # 翻译碰撞结果
@@ -72,7 +72,7 @@ tag-merge/
 1. **基础环境**：已安装 Docker 和 Docker Compose (V2)。
 2. **API 凭证**：拥有百度翻译开放平台账号，并开通了**通用文本翻译** API，获取了 `APP ID` 和 `密钥`。
 3. **导出数据 CSV**：从线上 WordPress 数据库执行以下 SQL，将结果导出为 CSV 文件放入本地 `data/` 目录。
-   - **`data/zh_tags.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下包含中文的标签)
+   - **`data/zh_tags_containing_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下包含中文的标签)
      ```sql
      SELECT
        t.term_id,
@@ -92,7 +92,7 @@ tag-merge/
      LIMIT
        0, 3000
      ```
-   - **`data/en_tags.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下不包含中文的标签)
+   - **`data/zh_tags_without_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下不包含中文的标签)
      *(注意：此 SQL 查询的是中文（中国）语言下，但名称本身不包含中文字符的标签，如原本就是英文的标签)*
      ```sql
      SELECT
@@ -131,7 +131,7 @@ tag-merge/
      ```
    **CSV 格式示例：**
 
-   `zh_tags.csv` & `en_tags.csv`
+   `zh_tags_containing_chinese.csv` & `zh_tags_without_chinese.csv`
    ```csv
    term_id,name,slug
    "7","图片水平垂直居中","%e5%9b%be%e7%89%87%e6%b0%b4%e5%b9%b3%e5%9e%82%e7%9b%b4%e5%b1%85%e4%b8%ad"

@@ -17,8 +17,8 @@
 	)
 	// ===== 配置项 =====
 	const (
-		ZhCSVPath     = "data/zh_tags.csv"
-		EnCSVPath     = "data/en_tags.csv"
+		ZhCSVPath     = "data/zh_tags_containing_chinese.csv"
+		EnCSVPath     = "data/zh_tags_without_chinese.csv"
 		OutCSVPath    = "output/tag_mapping_result.csv"
 		SleepInterval = 1100 * time.Millisecond // 免费版限频 1秒1次
 	)
