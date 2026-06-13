@@ -291,10 +291,11 @@ php merge-tags.php --all
 cd /var/www/html
 
 # 先进行模拟执行，查看将要修改的内容
-php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php --dry-run
+# 如果缓存文件不在默认位置，使用 -f 参数指定路径
+php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php -f /path/to/translation_cache.json --dry-run
 
 # 确认无误后执行实际修改
-php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php
+php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php -f /path/to/translation_cache.json
 ```
 
 **执行示例：**
