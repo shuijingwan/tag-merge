@@ -51,11 +51,12 @@ tag-merge/
 ├── output/                 # 存放程序运行后生成的结果文件
 │   ├── tag_mapping_result.csv  # 翻译碰撞结果
 │   ├── translation_cache.json  # 翻译缓存（自动生成，复用翻译结果）
-│   ├── merge_log.json          # [Step 4 依赖] 线上合并日志（JSON 格式，自动生成）
+│   ├── merge_log.json          # [Step 5 依赖] 线上合并日志（JSON 格式，自动生成）
 │   └── nginx_redirect.conf     # 生成的 Nginx 跳转规则
 ├── php/                    # 线上执行脚本（需上传至线上 Web 服务器运行）
-│   ├── polylang-batch-zh-to-en-tags.php  # Step 1
-│   └── merge-tags.php                   # Step 3
+│   ├── polylang-batch-zh-to-en-tags.php  # Step 1: 批量为中文标签添加英文翻译
+│   ├── merge-tags.php                   # Step 3: 执行标签合并
+│   └── fix-en-chinese-tags.php          # Step 4: 修复 English 语言下的中文标签
 ├── .env.example            # 环境变量示例文件
 ├── .env                    # 环境变量真实文件（已被 .gitignore 忽略）
 ├── .gitignore
@@ -281,7 +282,49 @@ php merge-tags.php --all
 
 ```
 
-### Step 4: 本地生成 Nginx 规则 (🖥️ 本地环境)
+### Step 4: 修复 English 语言下的中文标签 (🌐 线上环境)
+
+此步骤用于修复 English 语言下名称仍然是中文的标签（如 `/en/tag/支付宝` → `/en/tag/alipay`）。脚本会自动读取 `output/translation_cache.json` 中的翻译结果，批量修改这些标签。
+
+```bash
+# 在网站根目录执行
+cd /var/www/html
+
+# 先进行模拟执行，查看将要修改的内容
+php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php --dry-run
+
+# 确认无误后执行实际修改
+php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php
+```
+
+**执行示例：**
+
+```text
+✅ 成功加载翻译缓存，共 1258 条翻译记录
+
+🔍 发现 3 个 English 语言下名称包含中文的标签：
+   - 支付宝 (ID: 4567, Slug: zhifubao)
+   - 微信支付 (ID: 4568, Slug: wechat-pay)
+   - 阿里云 (ID: 4569, Slug: aliyun)
+
+🔄 准备处理: [en] 支付宝 (ID: 4567) -> Alipay
+   └─ Slug: zhifubao -> alipay
+✅ 修改成功！
+🔄 准备处理: [en] 微信支付 (ID: 4568) -> WeChat Pay
+   └─ Slug: wechat-pay -> wechat-pay
+✅ 修改成功！
+🔄 准备处理: [en] 阿里云 (ID: 4569) -> Alibaba Cloud
+   └─ Slug: aliyun -> alibaba-cloud
+✅ 修改成功！
+
+🎉 执行完毕！
+📊 统计：
+   已处理: 3 个
+   跳过(无翻译): 0 个
+   失败: 0 个
+```
+
+### Step 5: 本地生成 Nginx 规则 (🖥️ 本地环境)
 
 在本地 Docker 容器内运行 Go 脚本。此脚本会结合全量字典 `data/all_terms_slug.csv` 和上一步自动生成的合并日志 `output/merge_log.json`，通过 ID 交叉匹配自动推导出 Slug 的变化，并生成 301 跳转规则。
 
