@@ -1,12 +1,6 @@
 {
+  "editor.formatOnSave": true,
   "[markdown]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.formatOnPaste": true
-  },
-  "prettier.tabWidth": 4,
-  "prettier.singleQuote": false,
-  "prettier.printWidth": 80,
-  "prettier.proseWrap": "preserve",
-  "editor.formatOnSave": true
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
 }

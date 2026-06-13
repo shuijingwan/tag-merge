@@ -72,64 +72,64 @@ tag-merge/
 1. **基础环境**：已安装 Docker 和 Docker Compose (V2)。
 2. **API 凭证**：拥有百度翻译开放平台账号，并开通了**通用文本翻译** API，获取了 `APP ID` 和 `密钥`。
 3. **导出数据 CSV**：从线上 WordPress 数据库执行以下 SQL，将结果导出为 CSV 文件放入本地 `data/` 目录。
-    - **`data/zh_tags_containing_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下包含中文的标签)
-        ```sql
-        SELECT
+   - **`data/zh_tags_containing_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下包含中文的标签)
+     ```sql
+     SELECT
           t.term_id,
-          t.name,
-          t.slug
-        FROM
-          wp_terms t
-          INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id
-          INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
-          INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
-          INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
-        WHERE
-          tt.taxonomy = 'post_tag'
-          AND t.slug REGEXP '[^a-zA-Z0-9_-]'
-          AND tt_lang.taxonomy = 'term_language'
-          AND t_lang.slug = 'pll_zh'
-        ```
-    - **`data/zh_tags_without_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下不包含中文的标签)
-      _(注意：此 SQL 查询的是中文（中国）语言下，但名称本身不包含中文字符的标签，如原本就是英文的标签)_
+       t.name,
+       t.slug
+     FROM
+       wp_terms t
+       INNER JOIN wp_term_taxonomy    tt ON t.term_id = tt.term_id
+       INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
+       INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
+       INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
+     WHERE
+       tt.taxonomy = 'post_tag'
+      AND t.slug REGEXP '[^a-zA-Z0-9_-]'
+       AND tt_lang.taxonomy = 'term_language'
+       AND t_lang.slug = 'pll_zh'
+     ```
+   - **`data/zh_tags_without_chinese.csv`** (供 Step 2 翻译碰撞使用：中文（中国）语言下不包含中文的标签)
+     _(注意：此 SQL 查询的是中文（中国）语言下，但名称本身不包含中文字符的标签，如原本就是英文的标签)_
 
-    ````sql
-    SELECT
-      t.term_id,
-      t.name,
-      t.slug
-    FROM
-      wp_terms t
-      INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id
-      INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
-      INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
-      INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
-    WHERE
-      tt.taxonomy = 'post_tag'
-      AND t.slug REGEXP '^[a-zA-Z0-9_-]+$'
-      AND tt_lang.taxonomy = 'term_language'
-      AND t_lang.slug = 'pll_zh';
-    ```
-    - **`data/all_terms_slug.csv`** (供 Step 4 生成 Nginx 规则使用：全站标签 ID-Slug 字典)
-      *(此表不过滤语言，包含全站所有标签的 ID 与 Slug 映射)*
-    ```sql
-    SELECT
-      term_id,
-      slug
-    FROM
-      wp_terms
-    WHERE
-      term_id IN (
-        SELECT
-          term_id
-        FROM
-          wp_term_taxonomy
-        WHERE
-          taxonomy = 'post_tag'
-      );
-    ```
-    **CSV 格式示例：**
-    ````
+   ````sql
+   SELECT
+     t.term_id,
+     t.name,
+     t.slug
+   FROM
+     wp_terms t
+     INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id
+     INNER JOIN wp_term_relationships tr ON tr.object_id = t.term_id
+     INNER JOIN wp_term_taxonomy tt_lang ON tt_lang.term_taxonomy_id = tr.term_taxonomy_id
+     INNER JOIN wp_terms t_lang ON t_lang.term_id = tt_lang.term_id
+   WHERE
+     tt.taxonomy = 'post_tag'
+     AND t.slug REGEXP '^[a-zA-Z0-9_-]+$'
+     AND tt_lang.taxonomy = 'term_language'
+     AND t_lang.slug = 'pll_zh';
+   ```
+   - **`data/all_terms_slug.csv`** (供 Step 4 生成 Nginx 规则使用：全站标签 ID-Slug 字典)
+     *(此表不过滤语言，包含全站所有标签的 ID 与 Slug 映射)*
+   ```sql
+   SELECT
+     term_id,
+     slug
+   FROM
+     wp_terms
+   WHERE
+     term_id IN (
+       SELECT
+         term_id
+       FROM
+         wp_term_taxonomy
+       WHERE
+         taxonomy = 'post_tag'
+     );
+   ```
+   **CSV 格式示例：**
+   ````
 
 `zh_tags_containing_chinese.csv` & `zh_tags_without_chinese.csv`
 
