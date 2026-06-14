@@ -295,8 +295,8 @@ func createNewConfigFile(filePath string, rules []string) error {
 	return os.WriteFile(filePath, []byte(config.String()), 0644)
 }
 
-// cleanSlug 清理 slug，移除异常的多 slug 组合
-// 例如: "text-document-plain-text-document-txt-file" -> "text-document"
+// cleanSlug 清理 slug，只移除首尾空白和 Windows 回车符
+// 保留完整的 slug，包括超长的组合 slug
 func cleanSlug(slug string) string {
 	if slug == "" {
 		return ""
@@ -306,46 +306,7 @@ func cleanSlug(slug string) string {
 	slug = strings.TrimSpace(slug)
 	slug = strings.TrimRight(slug, "\r")
 
-	// 如果 slug 过长（超过 30 个字符），认为是异常的多 slug 组合
-	// 直接取第一个部分
-	if len(slug) > 30 {
-		parts := strings.Split(slug, "-")
-		if len(parts) > 0 {
-			slug = parts[0]
-		}
-	}
-
-	// 检测是否为多 slug 组合（包含多个连字符分隔的重复词）
-	// 策略：只取第一个合理的 slug
-	parts := strings.Split(slug, "-")
-
-	// 如果只有 2-3 个部分，认为是正常的 slug
-	if len(parts) <= 3 {
-		return slug
-	}
-
-	// 如果是多个独立 slug 合并的（如 "a-b-c-d"），尝试识别并清理
-	// 常见模式：重复的词组合，如 "text-document-plain-text-document-txt-file"
-	// 简化处理：取前半部分（到第一个重复点）
-	result := ""
-	seen := make(map[string]bool)
-	for _, part := range parts {
-		// 如果这个词之前见过，说明进入了重复部分，停止
-		if seen[part] {
-			break
-		}
-		if result != "" {
-			result += "-"
-		}
-		result += part
-		seen[part] = true
-	}
-
-	if result == "" {
-		return slug
-	}
-
-	return result
+	return slug
 }
 
 // loadAllSlugs 读取全量字典
