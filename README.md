@@ -290,21 +290,22 @@ php merge-tags.php --all
 **📁 目录结构要求：**
 
 ```
-├── php/
-│   └── fix-en-chinese-tags.php
+├── fix-en-chinese-tags.php
+├── merge-tags.php
+├── polylang-batch-zh-to-en-tags.php
 └── output/
     └── translation_cache.json
 ```
 
 ```bash
 # 在网站根目录执行
-cd /var/www/html
+cd /data/wwwroot/www.shuijingwanwq.com
 
 # 先进行模拟执行，查看将要修改的内容
-php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php --dry-run
+php fix-en-chinese-tags.php --dry-run
 
 # 确认无误后执行实际修改
-php wp-content/scripts/tag-merge/php/fix-en-chinese-tags.php
+php fix-en-chinese-tags.php
 ```
 
 **执行示例：**
