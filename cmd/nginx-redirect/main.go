@@ -302,8 +302,18 @@ func cleanSlug(slug string) string {
 		return ""
 	}
 
-	// 移除首尾空白
+	// 移除首尾空白和 Windows 回车符
 	slug = strings.TrimSpace(slug)
+	slug = strings.TrimRight(slug, "\r")
+
+	// 如果 slug 过长（超过 30 个字符），认为是异常的多 slug 组合
+	// 直接取第一个部分
+	if len(slug) > 30 {
+		parts := strings.Split(slug, "-")
+		if len(parts) > 0 {
+			slug = parts[0]
+		}
+	}
 
 	// 检测是否为多 slug 组合（包含多个连字符分隔的重复词）
 	// 策略：只取第一个合理的 slug
