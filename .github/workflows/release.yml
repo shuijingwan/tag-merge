@@ -18,94 +18,90 @@ jobs:
 
             - name: Generate Release Notes
               id: release-notes
-              uses: actions/github-script@v7
-              with:
-                  script: |
-                      const { Octokit } = require("@octokit/rest");
-                      const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+              run: |
+                  # 生成版本对比链接
+                  PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -A1 "${{ github.ref_name }}" | tail -n1)
+                  if [ -n "$PREV_TAG" ]; then
+                    COMPARE_URL="${{ github.event.repository.html_url }}/compare/${PREV_TAG}...${{ github.ref_name }}"
+                    echo "compare_url=${COMPARE_URL}" >> "$GITHUB_OUTPUT"
+                  fi
 
-                      const tags = await octokit.rest.git.listMatchingRefs({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        ref: "tags/v"
-                      });
+                  # 生成变更日志
+                  RELEASE_NOTES="## 📋 版本说明\n\n"
 
-                      const sortedTags = tags.data
-                        .map(tag => tag.ref.replace("refs/tags/", ""))
-                        .sort((a, b) => {
-                          const va = a.replace("v", "").split(".").map(Number);
-                          const vb = b.replace("v", "").split(".").map(Number);
-                          for (let i = 0; i < Math.max(va.length, vb.length); i++) {
-                            if ((va[i] || 0) !== (vb[i] || 0)) return (va[i] || 0) - (vb[i] || 0);
-                          }
-                          return 0;
-                        });
+                  if [ -n "$COMPARE_URL" ]; then
+                    RELEASE_NOTES+="📈 [查看变更对比]($COMPARE_URL)\n\n"
+                  fi
 
-                      const currentTag = context.ref.replace("refs/tags/", "");
-                      const currentIndex = sortedTags.indexOf(currentTag);
-                      const previousTag = currentIndex > 0 ? sortedTags[currentIndex - 1] : null;
+                  # 获取当前标签之后的提交（按类型分组）
+                  if [ -n "$PREV_TAG" ]; then
+                    COMMITS=$(git log --oneline "$PREV_TAG"..HEAD)
+                  else
+                    COMMITS=$(git log --oneline)
+                  fi
 
-                      const compareUrl = previousTag 
-                        ? `${context.repo.html_url}/compare/${previousTag}...${currentTag}`
-                        : null;
+                  # 定义类型分类
+                  declare -A CATEGORIES=(
+                    ["feat"]="✨ 新功能"
+                    ["fix"]="🐛 Bug 修复"
+                    ["docs"]="📝 文档更新"
+                    ["refactor"]="🔧 代码重构"
+                    ["perf"]="⚡ 性能优化"
+                    ["test"]="🧪 测试"
+                    ["chore"]="🔨 构建/工具"
+                    ["style"]="🎨 代码风格"
+                  )
 
-                      const commits = await octokit.rest.repos.listCommits({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        sha: context.sha,
-                        per_page: 100
-                      });
+                  # 初始化分类数组
+                  for TYPE in "${!CATEGORIES[@]}"; do
+                    declare -a "${TYPE}_COMMITS"=()
+                  done
 
-                      let releaseNotes = `## 📋 版本说明\n\n`;
+                  # 解析提交并分类
+                  while IFS= read -r COMMIT; do
+                    # 提取类型和描述
+                    TYPE=$(echo "$COMMIT" | sed -n 's/^[^ ]* \([a-z]*\)\([(].*[)]\)\?: .*/\1/p')
+                    DESCRIPTION=$(echo "$COMMIT" | sed 's/^[^ ]* \([a-z]*\)\([(].*[)]\)\?: //')
+                    SCOPE=$(echo "$COMMIT" | sed -n 's/^[^ ]* [a-z]*\(\([(].*[)]\)\)\?: .*/\1/p')
+                    
+                    if [ -n "$TYPE" ] && [[ " ${!CATEGORIES[@]} " =~ " $TYPE " ]]; then
+                      if [ -n "$SCOPE" ]; then
+                        eval "${TYPE}_COMMITS+=(\"- **${SCOPE}** ${DESCRIPTION}\")"
+                      else
+                        eval "${TYPE}_COMMITS+=(\"- ${DESCRIPTION}\")"
+                      fi
+                    fi
+                  done <<< "$COMMITS"
 
-                      if (compareUrl) {
-                        releaseNotes += `📈 [查看变更对比](${compareUrl})\n\n`;
-                      }
+                  # 生成分类输出
+                  for TYPE in feat fix docs refactor perf test chore style; do
+                    COUNT=$(eval "echo \${#${TYPE}_COMMITS[@]}")
+                    if [ "$COUNT" -gt 0 ]; then
+                      RELEASE_NOTES+="${CATEGORIES[$TYPE]}\n\n"
+                      eval "printf '%s\\n' \"\${${TYPE}_COMMITS[@]}\" >> /tmp/commits.txt"
+                      while IFS= read -r LINE; do
+                        RELEASE_NOTES+="$LINE\n"
+                      done < /tmp/commits.txt
+                      RELEASE_NOTES+="\n"
+                    fi
+                  done
 
-                      const categories = {
-                        feat: { title: "✨ 新功能", commits: [] },
-                        fix: { title: "🐛 Bug 修复", commits: [] },
-                        docs: { title: "📝 文档更新", commits: [] },
-                        refactor: { title: "🔧 代码重构", commits: [] },
-                        perf: { title: "⚡ 性能优化", commits: [] },
-                        test: { title: "🧪 测试", commits: [] },
-                        chore: { title: "🔨 构建/工具", commits: [] },
-                        style: { title: "🎨 代码风格", commits: [] }
-                      };
+                  RELEASE_NOTES+="---\n\n🚀 发布于 $(date +'%Y/%m/%d')\n"
 
-                      for (const commit of commits.data) {
-                        const message = commit.commit.message.split("\n")[0];
-                        const match = message.match(/^(\w+)(\([^)]+\))?:\s*(.+)$/);
-                        
-                        if (match) {
-                          const type = match[1];
-                          const scope = match[2]?.replace(/[()]/g, "") || "";
-                          const description = match[3];
-                          
-                          if (categories[type]) {
-                            const scopeText = scope ? `**[${scope}]** ` : "";
-                            categories[type].commits.push(`- ${scopeText}${description}`);
-                          }
-                        }
-                      }
+                  # 输出到文件
+                  echo -e "$RELEASE_NOTES" > /tmp/release_notes.md
+                  cat /tmp/release_notes.md
 
-                      for (const [key, category] of Object.entries(categories)) {
-                        if (category.commits.length > 0) {
-                          releaseNotes += `${category.title}\n\n${category.commits.join("\n")}\n\n`;
-                        }
-                      }
-
-                      releaseNotes += `---\n\n🚀 发布于 ${new Date().toLocaleDateString("zh-CN")}\n\n`;
-
-                      return releaseNotes;
+                  # 设置输出变量
+                  RELEASE_NOTES_ESCAPED=$(cat /tmp/release_notes.md | sed 's/%/%25/g; s/\n/%0A/g; s/\r/%0D/g')
+                  echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+                  cat /tmp/release_notes.md >> "$GITHUB_OUTPUT"
+                  echo "EOF" >> "$GITHUB_OUTPUT"
 
             - name: Create Release
-              uses: actions/create-release@v1
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ github.ref }}
-                  release_name: ${{ github.ref_name }}
-                  body: ${{ steps.release-notes.outputs.result }}
+                  name: ${{ github.ref_name }}
+                  body_path: /tmp/release_notes.md
                   draft: false
                   prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
