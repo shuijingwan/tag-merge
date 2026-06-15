@@ -17,86 +17,125 @@ jobs:
                   fetch-depth: 0
 
             - name: Generate Release Notes
-              id: release-notes
               run: |
-                  # 生成版本对比链接
+                  echo "## 📋 版本说明" > /tmp/release_notes.md
+                  echo "" >> /tmp/release_notes.md
+
+                  # 获取前一个标签
                   PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | grep -A1 "${{ github.ref_name }}" | tail -n1)
+
                   if [ -n "$PREV_TAG" ]; then
                     COMPARE_URL="${{ github.event.repository.html_url }}/compare/${PREV_TAG}...${{ github.ref_name }}"
-                    echo "compare_url=${COMPARE_URL}" >> "$GITHUB_OUTPUT"
+                    echo "📈 [查看变更对比]($COMPARE_URL)" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
                   fi
 
-                  # 生成变更日志
-                  RELEASE_NOTES="## 📋 版本说明\n\n"
+                  # 初始化分类文件
+                  > /tmp/feat.txt
+                  > /tmp/fix.txt
+                  > /tmp/docs.txt
+                  > /tmp/refactor.txt
+                  > /tmp/perf.txt
+                  > /tmp/test.txt
+                  > /tmp/chore.txt
+                  > /tmp/style.txt
 
-                  if [ -n "$COMPARE_URL" ]; then
-                    RELEASE_NOTES+="📈 [查看变更对比]($COMPARE_URL)\n\n"
-                  fi
-
-                  # 获取当前标签之后的提交（按类型分组）
+                  # 解析提交并分类
                   if [ -n "$PREV_TAG" ]; then
                     COMMITS=$(git log --oneline "$PREV_TAG"..HEAD)
                   else
                     COMMITS=$(git log --oneline)
                   fi
 
-                  # 定义类型分类
-                  declare -A CATEGORIES=(
-                    ["feat"]="✨ 新功能"
-                    ["fix"]="🐛 Bug 修复"
-                    ["docs"]="📝 文档更新"
-                    ["refactor"]="🔧 代码重构"
-                    ["perf"]="⚡ 性能优化"
-                    ["test"]="🧪 测试"
-                    ["chore"]="🔨 构建/工具"
-                    ["style"]="🎨 代码风格"
-                  )
-
-                  # 初始化分类数组
-                  for TYPE in "${!CATEGORIES[@]}"; do
-                    declare -a "${TYPE}_COMMITS"=()
-                  done
-
-                  # 解析提交并分类
-                  while IFS= read -r COMMIT; do
-                    # 提取类型和描述
-                    TYPE=$(echo "$COMMIT" | sed -n 's/^[^ ]* \([a-z]*\)\([(].*[)]\)\?: .*/\1/p')
-                    DESCRIPTION=$(echo "$COMMIT" | sed 's/^[^ ]* \([a-z]*\)\([(].*[)]\)\?: //')
-                    SCOPE=$(echo "$COMMIT" | sed -n 's/^[^ ]* [a-z]*\(\([(].*[)]\)\)\?: .*/\1/p')
+                  echo "$COMMITS" | while read -r COMMIT_LINE; do
+                    # 提取类型、范围和描述
+                    TYPE=$(echo "$COMMIT_LINE" | awk '{print $2}' | sed 's/^\([a-z]*\).*/\1/')
+                    REST=$(echo "$COMMIT_LINE" | cut -d' ' -f3-)
                     
-                    if [ -n "$TYPE" ] && [[ " ${!CATEGORIES[@]} " =~ " $TYPE " ]]; then
-                      if [ -n "$SCOPE" ]; then
-                        eval "${TYPE}_COMMITS+=(\"- **${SCOPE}** ${DESCRIPTION}\")"
-                      else
-                        eval "${TYPE}_COMMITS+=(\"- ${DESCRIPTION}\")"
-                      fi
+                    # 提取范围（如果有）
+                    SCOPE=$(echo "$REST" | sed -n 's/^\(([^)]*)\):.*/\1/p')
+                    DESCRIPTION=$(echo "$REST" | sed 's/^([^)]*): //')
+                    
+                    if [ -z "$DESCRIPTION" ]; then
+                      DESCRIPTION="$REST"
                     fi
-                  done <<< "$COMMITS"
 
-                  # 生成分类输出
-                  for TYPE in feat fix docs refactor perf test chore style; do
-                    COUNT=$(eval "echo \${#${TYPE}_COMMITS[@]}")
-                    if [ "$COUNT" -gt 0 ]; then
-                      RELEASE_NOTES+="${CATEGORIES[$TYPE]}\n\n"
-                      eval "printf '%s\\n' \"\${${TYPE}_COMMITS[@]}\" >> /tmp/commits.txt"
-                      while IFS= read -r LINE; do
-                        RELEASE_NOTES+="$LINE\n"
-                      done < /tmp/commits.txt
-                      RELEASE_NOTES+="\n"
-                    fi
+                    case "$TYPE" in
+                      feat) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/feat.txt ;;
+                      fix) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/fix.txt ;;
+                      docs) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/docs.txt ;;
+                      refactor) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/refactor.txt ;;
+                      perf) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/perf.txt ;;
+                      test) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/test.txt ;;
+                      chore) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/chore.txt ;;
+                      style) echo "- ${SCOPE:+**$SCOPE** }$DESCRIPTION" >> /tmp/style.txt ;;
+                    esac
                   done
 
-                  RELEASE_NOTES+="---\n\n🚀 发布于 $(date +'%Y/%m/%d')\n"
+                  # 输出分类结果
+                  if [ -s /tmp/feat.txt ]; then
+                    echo "✨ 新功能" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/feat.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
 
-                  # 输出到文件
-                  echo -e "$RELEASE_NOTES" > /tmp/release_notes.md
+                  if [ -s /tmp/fix.txt ]; then
+                    echo "🐛 Bug 修复" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/fix.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
+
+                  if [ -s /tmp/docs.txt ]; then
+                    echo "📝 文档更新" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/docs.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
+
+                  if [ -s /tmp/refactor.txt ]; then
+                    echo "🔧 代码重构" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/refactor.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
+
+                  if [ -s /tmp/perf.txt ]; then
+                    echo "⚡ 性能优化" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/perf.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
+
+                  if [ -s /tmp/test.txt ]; then
+                    echo "🧪 测试" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/test.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
+
+                  if [ -s /tmp/chore.txt ]; then
+                    echo "🔨 构建/工具" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/chore.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
+
+                  if [ -s /tmp/style.txt ]; then
+                    echo "🎨 代码风格" >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                    cat /tmp/style.txt >> /tmp/release_notes.md
+                    echo "" >> /tmp/release_notes.md
+                  fi
+
+                  echo "---" >> /tmp/release_notes.md
+                  echo "" >> /tmp/release_notes.md
+                  echo "🚀 发布于 $(date +'%Y/%m/%d')" >> /tmp/release_notes.md
+
+                  echo "=== Generated Release Notes ==="
                   cat /tmp/release_notes.md
-
-                  # 设置输出变量
-                  RELEASE_NOTES_ESCAPED=$(cat /tmp/release_notes.md | sed 's/%/%25/g; s/\n/%0A/g; s/\r/%0D/g')
-                  echo "notes<<EOF" >> "$GITHUB_OUTPUT"
-                  cat /tmp/release_notes.md >> "$GITHUB_OUTPUT"
-                  echo "EOF" >> "$GITHUB_OUTPUT"
+                  echo "=== End ==="
 
             - name: Create Release
               uses: softprops/action-gh-release@v2
