@@ -1,0 +1,111 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*"
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Generate Release Notes
+              id: release-notes
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const { Octokit } = require("@octokit/rest");
+                      const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+                      const tags = await octokit.rest.git.listMatchingRefs({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        ref: "tags/v"
+                      });
+
+                      const sortedTags = tags.data
+                        .map(tag => tag.ref.replace("refs/tags/", ""))
+                        .sort((a, b) => {
+                          const va = a.replace("v", "").split(".").map(Number);
+                          const vb = b.replace("v", "").split(".").map(Number);
+                          for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+                            if ((va[i] || 0) !== (vb[i] || 0)) return (va[i] || 0) - (vb[i] || 0);
+                          }
+                          return 0;
+                        });
+
+                      const currentTag = context.ref.replace("refs/tags/", "");
+                      const currentIndex = sortedTags.indexOf(currentTag);
+                      const previousTag = currentIndex > 0 ? sortedTags[currentIndex - 1] : null;
+
+                      const compareUrl = previousTag 
+                        ? `${context.repo.html_url}/compare/${previousTag}...${currentTag}`
+                        : null;
+
+                      const commits = await octokit.rest.repos.listCommits({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        sha: context.sha,
+                        per_page: 100
+                      });
+
+                      let releaseNotes = `## 📋 版本说明\n\n`;
+
+                      if (compareUrl) {
+                        releaseNotes += `📈 [查看变更对比](${compareUrl})\n\n`;
+                      }
+
+                      const categories = {
+                        feat: { title: "✨ 新功能", commits: [] },
+                        fix: { title: "🐛 Bug 修复", commits: [] },
+                        docs: { title: "📝 文档更新", commits: [] },
+                        refactor: { title: "🔧 代码重构", commits: [] },
+                        perf: { title: "⚡ 性能优化", commits: [] },
+                        test: { title: "🧪 测试", commits: [] },
+                        chore: { title: "🔨 构建/工具", commits: [] },
+                        style: { title: "🎨 代码风格", commits: [] }
+                      };
+
+                      for (const commit of commits.data) {
+                        const message = commit.commit.message.split("\n")[0];
+                        const match = message.match(/^(\w+)(\([^)]+\))?:\s*(.+)$/);
+                        
+                        if (match) {
+                          const type = match[1];
+                          const scope = match[2]?.replace(/[()]/g, "") || "";
+                          const description = match[3];
+                          
+                          if (categories[type]) {
+                            const scopeText = scope ? `**[${scope}]** ` : "";
+                            categories[type].commits.push(`- ${scopeText}${description}`);
+                          }
+                        }
+                      }
+
+                      for (const [key, category] of Object.entries(categories)) {
+                        if (category.commits.length > 0) {
+                          releaseNotes += `${category.title}\n\n${category.commits.join("\n")}\n\n`;
+                        }
+                      }
+
+                      releaseNotes += `---\n\n🚀 发布于 ${new Date().toLocaleDateString("zh-CN")}\n\n`;
+
+                      return releaseNotes;
+
+            - name: Create Release
+              uses: actions/create-release@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  tag_name: ${{ github.ref }}
+                  release_name: ${{ github.ref_name }}
+                  body: ${{ steps.release-notes.outputs.result }}
+                  draft: false
+                  prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
