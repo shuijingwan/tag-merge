@@ -1,18 +1,18 @@
 {
   "name": "Tag Merge Dev Container",
-
-  "dockerComposeFile": ["../docker-compose.yml"],
+  "dockerComposeFile": [
+    "../docker-compose.yml"
+  ],
   "service": "go",
   "workspaceFolder": "/code",
-
   "shutdownAction": "stopCompose",
-
+  "remoteUser": "vscode",
   "customizations": {
     "vscode": {
       "extensions": [
         "golang.Go",
         "eamodio.gitlens",
-        "ms-azuretools.vscode-docker"
+        "openai.chatgpt"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "sh",
@@ -21,7 +21,5 @@
         "go.gopath": "/go"
       }
     }
-  },
-
-  "remoteUser": "root"
+  }
 }
