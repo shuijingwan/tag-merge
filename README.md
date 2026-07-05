@@ -11,14 +11,15 @@
 
 ## 🔄 核心工作流与运行环境
 
-本工具集包含 4 个核心步骤，跨越本地和线上环境：
+本工具集包含 5 个核心步骤，跨越本地和线上环境：
 
 | 步骤       | 脚本                                   | 运行环境      | 说明                                                                                               |
 | :--------- | :------------------------------------- | :------------ | :------------------------------------------------------------------------------------------------- |
 | **Step 1** | `php/polylang-batch-zh-to-en-tags.php` | ☁️ 线上服务器 | 依赖 WP/Polylang 函数，将中文（中国）语言下的标签批量同步至 English 语言下（生成未翻译的占位标签） |
 | **Step 2** | `main.go`                              | 🖥️ 本地       | 导出线上标签为 CSV，调用百度 API 翻译并智能碰撞，生成映射关系 CSV                                  |
 | **Step 3** | `php/merge-tags.php`                   | ☁️ 线上服务器 | 依赖 WP/Polylang 函数，读取映射 CSV，将中文标签合并至正确的英文标签并建立关联                      |
-| **Step 4** | `cmd/nginx-redirect/main.go`           | 🖥️ 本地       | 读取合并日志与全量 Slug 字典，生成 Nginx 301 跳转配置文件，恢复旧标签的 SEO 权重                   |
+| **Step 4** | `php/fix-en-chinese-tags.php`          | ☁️ 线上服务器 | 修复 English 语言下名称仍为中文的标签，并生成修复日志                                             |
+| **Step 5** | `cmd/nginx-redirect/main.go`           | 🖥️ 本地       | 读取合并日志、修复日志与全量 Slug 字典，生成 Nginx 301 跳转配置文件，恢复旧标签的 SEO 权重         |
 
 **为什么跨环境？**
 
@@ -47,7 +48,7 @@ tag-merge/
 ├── data/                   # 存放从数据库导出的原始 CSV 文件
 │   ├── zh_tags_containing_chinese.csv  # [Step 2 依赖] 中文（中国）语言下包含中文的标签
 │   ├── zh_tags_without_chinese.csv     # [Step 2 依赖] 中文（中国）语言下不包含中文的标签
-│   └── all_terms_slug.csv  # [Step 4 依赖] 全站标签 ID-Slug 字典
+│   └── all_terms_slug.csv  # [Step 5 依赖] 全站标签 ID-Slug 字典
 ├── output/                 # 存放程序运行后生成的结果文件
 │   ├── tag_mapping_result.csv  # 翻译碰撞结果
 │   ├── translation_cache.json  # 翻译缓存（自动生成，复用翻译结果）
@@ -117,7 +118,7 @@ tag-merge/
           AND t_lang.slug = 'pll_zh';
         ```
 
-    - **`data/all_terms_slug.csv`** (供 Step 4 生成 Nginx 规则使用：全站标签 ID-Slug 字典)
+    - **`data/all_terms_slug.csv`** (供 Step 5 生成 Nginx 规则使用：全站标签 ID-Slug 字典)
 
         _(此表不过滤语言，包含全站所有标签的 ID 与 Slug 映射)_
 
@@ -241,7 +242,7 @@ php merge-tags.php 148
 php merge-tags.php --all
 ```
 
-⚠️ **重要**：执行全量实战 `--all` 后，脚本会自动生成 `output/merge_log.json` 文件，供 Step 4 使用。无需手动复制日志！
+⚠️ **重要**：执行全量实战 `--all` 后，脚本会自动生成 `output/merge_log.json` 文件，供 Step 5 使用。无需手动复制日志！
 
 日志文件格式示例（`merge_log.json`）：
 
