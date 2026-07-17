@@ -18,11 +18,13 @@ $processed = 0;
 $skipped = 0;
 
 // 先一次性获取所有源语言标签的ID列表（使用fields参数避免获取完整对象）
+// 批处理维护脚本必须绕过持久 term-query 缓存，避免新增标签被旧结果遗漏。
 $source_term_ids = get_terms([
     'taxonomy' => 'post_tag',
     'lang' => $source_lang,
     'hide_empty' => false,
     'fields' => 'ids',
+    'cache_results' => false,
 ]);
 
 if (is_wp_error($source_term_ids)) {
